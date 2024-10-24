@@ -30,7 +30,7 @@ for file in `\find etc -type f`; do
 done
 
 # アプリケーションのビルド
-APP_NAME=isucari
+APP_NAME=isupipe
 cd /home/isucon/webapp/go/
 
 # もしpgo.pb.gzがあればPGOを利用してビルド
@@ -44,7 +44,7 @@ fi
 # ミドルウェア・Appの再起動
 sudo systemctl restart mysql
 sudo systemctl restart nginx
-sudo systemctl restart ${APP_NAME}.go
+sudo systemctl restart ${APP_NAME}-go
 
 # slow query logの有効化
 # QUERY="
