@@ -29,7 +29,7 @@ const (
 )
 
 var fallbackImage = "../img/NoImage.jpg"
-var iconCache = map[int64]string{}
+var iconCache = map[int64][]byte{}
 
 type UserModel struct {
 	ID             int64  `db:"id"`
@@ -106,12 +106,18 @@ func getIconHandler(c echo.Context) error {
 	}
 
 	var image []byte
-	if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", user.ID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return c.File(fallbackImage)
-		} else {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user icon: "+err.Error())
+	cache, ok := iconCache[user.ID]
+	if ok {
+		image = cache
+	} else {
+		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", user.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return c.File(fallbackImage)
+			} else {
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user icon: "+err.Error())
+			}
 		}
+		iconCache[user.ID] = image
 	}
 
 	return c.Blob(http.StatusOK, "image/jpeg", image)
@@ -149,8 +155,7 @@ func postIconHandler(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
 	}
-	iconHash := sha256.Sum256(req.Image)
-	iconCache[userID] = fmt.Sprintf("%x", iconHash)
+	iconCache[userID] = req.Image
 
 	iconID, err := rs.LastInsertId()
 	if err != nil {
@@ -410,7 +415,7 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 	var iconHashString string
 	cache, ok := iconCache[userModel.ID]
 	if ok {
-		iconHashString = cache
+		iconHashString = fmt.Sprintf("%x", sha256.Sum256(cache))
 	} else {
 		var image []byte
 		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userModel.ID); err != nil {
@@ -422,9 +427,8 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 				return User{}, err
 			}
 		}
-		iconHash := sha256.Sum256(image)
-		iconHashString = fmt.Sprintf("%x", iconHash)
-		iconCache[userModel.ID] = iconHashString
+		iconCache[userModel.ID] = image
+		iconHashString = fmt.Sprintf("%x", sha256.Sum256(image))
 	}
 
 	user := User{
