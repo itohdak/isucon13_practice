@@ -46,6 +46,7 @@ CREATE TABLE `reservation_slots` (
   `start_at` BIGINT NOT NULL,
   `end_at` BIGINT NOT NULL
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+CREATE INDEX idx_slot_start_at_end_at ON reservation_slots (slot DESC, start_at, end_at DESC);
 
 -- ライブストリームに付与される、サービスで定義されたタグ
 CREATE TABLE `tags` (
