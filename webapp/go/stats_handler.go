@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -224,17 +223,17 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	var livestream LivestreamModel
+	/* var livestream LivestreamModel
 	if err := tx.GetContext(ctx, &livestream, "SELECT * FROM livestreams WHERE id = ?", livestreamID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return echo.NewHTTPError(http.StatusBadRequest, "cannot get stats of not found livestream")
 		} else {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestream: "+err.Error())
 		}
-	}
+	} */
 
-	var livestreams []*LivestreamModel
-	if err := tx.SelectContext(ctx, &livestreams, "SELECT * FROM livestreams"); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	var livestreamIDs []int64
+	if err := tx.SelectContext(ctx, &livestreamIDs, "SELECT id FROM livestreams"); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams: "+err.Error())
 	}
 
@@ -247,7 +246,7 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 		&reactionScore,
 		"SELECT l.id AS id, COUNT(r.created_at) AS score"+
 			"	FROM livestreams l"+
-			"	LEFT OUTER JOIN reactions r"+
+			"	INNER JOIN reactions r"+
 			"	ON l.id = r.livestream_id"+
 			"	GROUP BY id"); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to bulk count reactions: "+err.Error())
@@ -257,21 +256,20 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 		&tipScore,
 		"SELECT l.id AS id, IFNULL(SUM(l2.tip), 0) AS score"+
 			"	FROM livestreams l"+
-			"	LEFT OUTER JOIN livecomments l2"+
+			"	INNER JOIN livecomments l2"+
 			"	ON l.id = l2.livestream_id"+
 			"	GROUP BY id"); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to bulk count tips: "+err.Error())
 	}
-	var totalScore = make(map[int64]int64, len(reactionScore))
+	var totalScore = make(map[int64]int64, len(livestreamIDs))
+	for _, id := range livestreamIDs {
+		totalScore[id] = 0
+	}
 	for _, score := range reactionScore {
-		totalScore[score.LivestreamID] = score.Score
+		totalScore[score.LivestreamID] += score.Score
 	}
 	for _, score := range tipScore {
-		if _, ok := totalScore[score.LivestreamID]; !ok {
-			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to calculate total score: id %d not found", score.LivestreamID))
-		} else {
-			totalScore[score.LivestreamID] += score.Score
-		}
+		totalScore[score.LivestreamID] += score.Score
 	}
 	for id, score := range totalScore {
 		ranking = append(ranking, LivestreamRankingEntry{
