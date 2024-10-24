@@ -155,7 +155,6 @@ func postIconHandler(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
 	}
-	iconCache[userID] = req.Image
 
 	iconID, err := rs.LastInsertId()
 	if err != nil {
@@ -165,6 +164,7 @@ func postIconHandler(c echo.Context) error {
 	if err := tx.Commit(); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
+	iconCache[userID] = req.Image
 
 	return c.JSON(http.StatusCreated, &PostIconResponse{
 		ID: iconID,
