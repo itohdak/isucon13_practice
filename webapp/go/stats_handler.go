@@ -262,7 +262,7 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 			"	GROUP BY id"); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to bulk count tips: "+err.Error())
 	}
-	var totalScore map[int64]int64
+	var totalScore = make(map[int64]int64, len(reactionScore))
 	for _, score := range reactionScore {
 		totalScore[score.LivestreamID] = score.Score
 	}
