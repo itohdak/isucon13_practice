@@ -29,6 +29,7 @@ const (
 )
 
 var fallbackImage = "../img/NoImage.jpg"
+var iconCache = map[int64]string{}
 
 type UserModel struct {
 	ID             int64  `db:"id"`
@@ -148,6 +149,8 @@ func postIconHandler(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
 	}
+	iconHash := sha256.Sum256(req.Image)
+	iconCache[userID] = fmt.Sprintf("%x", iconHash)
 
 	iconID, err := rs.LastInsertId()
 	if err != nil {
@@ -404,17 +407,25 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		return User{}, err
 	}
 
-	var image []byte
-	if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userModel.ID); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return User{}, err
+	var iconHashString string
+	cache, ok := iconCache[userModel.ID]
+	if ok {
+		iconHashString = cache
+	} else {
+		var image []byte
+		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userModel.ID); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return User{}, err
+			}
+			image, err = os.ReadFile(fallbackImage)
+			if err != nil {
+				return User{}, err
+			}
 		}
-		image, err = os.ReadFile(fallbackImage)
-		if err != nil {
-			return User{}, err
-		}
+		iconHash := sha256.Sum256(image)
+		iconHashString = fmt.Sprintf("%x", iconHash)
+		iconCache[userModel.ID] = iconHashString
 	}
-	iconHash := sha256.Sum256(image)
 
 	user := User{
 		ID:          userModel.ID,
@@ -425,7 +436,7 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 			ID:       themeModel.ID,
 			DarkMode: themeModel.DarkMode,
 		},
-		IconHash: fmt.Sprintf("%x", iconHash),
+		IconHash: iconHashString,
 	}
 
 	return user, nil
