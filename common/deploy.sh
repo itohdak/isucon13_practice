@@ -37,7 +37,7 @@ cd /home/isucon/webapp/go/
 if [ -e pgo.pb.gz ]; then
   go build -o ${APP_NAME} -pgo=pgo.pb.gz
 else
-  go build -o ${APP_NAME}
+  /home/isucon/local/golang/bin/go build -o ${APP_NAME}
 fi
 
 
