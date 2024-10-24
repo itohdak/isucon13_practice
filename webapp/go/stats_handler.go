@@ -269,6 +269,8 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 	for _, score := range tipScore {
 		if _, ok := totalScore[score.LivestreamID]; !ok {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to calculate total score: id %d not found", score.LivestreamID))
+		} else {
+			totalScore[score.LivestreamID] += score.Score
 		}
 	}
 	for id, score := range totalScore {
