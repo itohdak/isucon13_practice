@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -32,6 +33,11 @@ func (r LivestreamRanking) Less(i, j int) bool {
 	} else {
 		return r[i].Score < r[j].Score
 	}
+}
+
+type LivestreamScore struct {
+	LivestreamID int64 `db:"id"`
+	Score        int64 `db:"score"`
 }
 
 type UserStatistics struct {
@@ -234,20 +240,40 @@ func getLivestreamStatisticsHandler(c echo.Context) error {
 
 	// ランク算出
 	var ranking LivestreamRanking
-	for _, livestream := range livestreams {
-		var reactions int64
-		if err := tx.GetContext(ctx, &reactions, "SELECT COUNT(*) FROM livestreams l INNER JOIN reactions r ON l.id = r.livestream_id WHERE l.id = ?", livestream.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count reactions: "+err.Error())
+	var reactionScore []LivestreamScore
+	var tipScore []LivestreamScore
+	if err := tx.SelectContext(
+		ctx,
+		&reactionScore,
+		"SELECT l.id AS id, COUNT(r.created_at) AS score"+
+			"	FROM livestreams l"+
+			"	LEFT OUTER JOIN reactions r"+
+			"	ON l.id = r.livestream_id"+
+			"	GROUP BY id"); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to bulk count reactions: "+err.Error())
+	}
+	if err := tx.SelectContext(
+		ctx,
+		&tipScore,
+		"SELECT l.id AS id, IFNULL(SUM(l2.tip), 0) AS score"+
+			"	FROM livestreams l"+
+			"	LEFT OUTER JOIN livecomments l2"+
+			"	ON l.id = l2.livestream_id"+
+			"	GROUP BY id"); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to bulk count tips: "+err.Error())
+	}
+	var totalScore map[int64]int64
+	for _, score := range reactionScore {
+		totalScore[score.LivestreamID] = score.Score
+	}
+	for _, score := range tipScore {
+		if _, ok := totalScore[score.LivestreamID]; !ok {
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("failed to calculate total score: id %d not found", score.LivestreamID))
 		}
-
-		var totalTips int64
-		if err := tx.GetContext(ctx, &totalTips, "SELECT IFNULL(SUM(l2.tip), 0) FROM livestreams l INNER JOIN livecomments l2 ON l.id = l2.livestream_id WHERE l.id = ?", livestream.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to count tips: "+err.Error())
-		}
-
-		score := reactions + totalTips
+	}
+	for id, score := range totalScore {
 		ranking = append(ranking, LivestreamRankingEntry{
-			LivestreamID: livestream.ID,
+			LivestreamID: id,
 			Score:        score,
 		})
 	}
