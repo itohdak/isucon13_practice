@@ -22,6 +22,12 @@ webapp/rust/
 !webapp/go/
 !webapp/sql/
 
+bench
+!webapp/.gitignore
+webapp/img/
+webapp/node/
+!webapp/pdns/
+
 # 環境変数のファイル名に合わせること
 env.sh
 !s1/home/isucon/env.sh
