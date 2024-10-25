@@ -15,6 +15,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+var tagCache = map[int64][]Tag{}
+
 type ReserveLivestreamRequest struct {
 	Tags         []int64 `json:"tags"`
 	Title        string  `json:"title"`
@@ -154,6 +156,7 @@ func reserveLivestreamHandler(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert livestream tag: "+err.Error())
 		}
 	}
+	delete(tagCache, livestreamID)
 
 	livestream, err := fillLivestreamResponse(ctx, tx, *livestreamModel)
 	if err != nil {
@@ -492,14 +495,19 @@ func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel Li
 	}
 
 	tags := []Tag{}
-	if err := tx.SelectContext(
-		ctx,
-		&tags,
-		"SELECT tags.id AS id, tags.name AS name"+
-			"	FROM livestream_tags, tags"+
-			"	WHERE livestream_id = ? AND livestream_tags.tag_id = tags.id",
-		livestreamModel.ID); err != nil {
-		return Livestream{}, fmt.Errorf("failed to get tags: %v", err)
+	if _, ok := tagCache[livestreamModel.ID]; ok {
+		tags = tagCache[livestreamModel.ID]
+	} else {
+		if err := tx.SelectContext(
+			ctx,
+			&tags,
+			"SELECT tags.id AS id, tags.name AS name"+
+				"	FROM livestream_tags, tags"+
+				"	WHERE livestream_id = ? AND livestream_tags.tag_id = tags.id",
+			livestreamModel.ID); err != nil {
+			return Livestream{}, fmt.Errorf("failed to get tags: %v", err)
+		}
+		tagCache[livestreamModel.ID] = tags
 	}
 
 	livestream := Livestream{
