@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,9 +30,12 @@ const (
 )
 
 var fallbackImage = "../img/NoImage.jpg"
-var iconCache = map[int64][]byte{}
-var iconHashCache = map[string]string{}
-var themeCache = map[int64]Theme{}
+
+var (
+	iconCache     = sync.Map{} // (int64, []byte)
+	iconHashCache = sync.Map{} // (string, string)
+	themeCache    = sync.Map{} // (int64, Theme)
+)
 
 type UserModel struct {
 	ID             int64  `db:"id"`
@@ -94,8 +98,8 @@ func getIconHandler(c echo.Context) error {
 	username := c.Param("username")
 
 	hash := c.Request().Header.Get("If-None-Match")
-	if cache, ok := iconHashCache[username]; ok {
-		if hash == cache {
+	if cache, ok := iconHashCache.Load(username); ok {
+		if hash == cache.(string) {
 			return c.Blob(http.StatusNotModified, "image/jpeg", []byte{})
 		}
 	}
@@ -115,9 +119,9 @@ func getIconHandler(c echo.Context) error {
 	}
 
 	var image []byte
-	cache, ok := iconCache[user.ID]
+	cache, ok := iconCache.Load(user.ID)
 	if ok {
-		image = cache
+		image = cache.([]byte)
 	} else {
 		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", user.ID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -126,7 +130,7 @@ func getIconHandler(c echo.Context) error {
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user icon: "+err.Error())
 			}
 		}
-		iconCache[user.ID] = image
+		iconCache.Store(user.ID, image)
 	}
 
 	return c.Blob(http.StatusOK, "image/jpeg", image)
@@ -173,7 +177,7 @@ func postIconHandler(c echo.Context) error {
 	if err := tx.Commit(); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
 	}
-	iconCache[userID] = req.Image
+	iconCache.Store(userID, req.Image)
 
 	return c.JSON(http.StatusCreated, &PostIconResponse{
 		ID: iconID,
@@ -277,7 +281,7 @@ func registerHandler(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get last inserted theme id: "+err.Error())
 	}
-	themeCache[userID] = Theme{themeID, req.Theme.DarkMode}
+	themeCache.Store(userID, Theme{themeID, req.Theme.DarkMode})
 
 	if out, err := exec.Command("pdnsutil", "add-record", "u.isucon.local", req.Name, "A", "0", powerDNSSubdomainAddress).CombinedOutput(); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, string(out)+": "+err.Error())
@@ -423,9 +427,9 @@ func verifyUserSession(c echo.Context) error {
 
 func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (User, error) {
 	themeModel := ThemeModel{}
-	tCache, ok := themeCache[userModel.ID]
+	tCache, ok := themeCache.Load(userModel.ID)
 	if ok {
-		themeModel = ThemeModel{tCache.ID, userModel.ID, tCache.DarkMode}
+		themeModel = ThemeModel{tCache.(Theme).ID, userModel.ID, tCache.(Theme).DarkMode}
 	} else {
 		if err := tx.GetContext(ctx, &themeModel, "SELECT * FROM themes WHERE user_id = ?", userModel.ID); err != nil {
 			return User{}, err
@@ -433,9 +437,9 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 	}
 
 	var iconHashString string
-	cache, ok := iconCache[userModel.ID]
+	cache, ok := iconCache.Load(userModel.ID)
 	if ok {
-		iconHashString = fmt.Sprintf("%x", sha256.Sum256(cache))
+		iconHashString = fmt.Sprintf("%x", sha256.Sum256(cache.([]byte)))
 	} else {
 		var image []byte
 		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userModel.ID); err != nil {
@@ -447,11 +451,11 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 				return User{}, err
 			}
 		}
-		iconCache[userModel.ID] = image
+		iconCache.Store(userModel.ID, image)
 		iconHashString = fmt.Sprintf("%x", sha256.Sum256(image))
 	}
-	if _, ok := iconHashCache[userModel.Name]; !ok {
-		iconHashCache[userModel.Name] = iconHashString
+	if _, ok := iconHashCache.Load(userModel.Name); !ok {
+		iconHashCache.Store(userModel.Name, iconHashString)
 	}
 
 	user := User{
