@@ -16,12 +16,10 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/gorilla/sessions"
 	"github.com/kaz/pprotein/integration/standalone"
 	"github.com/labstack/echo-contrib/session"
-	echolog "github.com/labstack/gommon/log"
 )
 
 const (
@@ -132,9 +130,9 @@ func main() {
 	go standalone.Integrate(":8888")
 
 	e := echo.New()
-	e.Debug = true
+	/* e.Debug = true
 	e.Logger.SetLevel(echolog.DEBUG)
-	e.Use(middleware.Logger())
+	e.Use(middleware.Logger()) */
 	cookieStore := sessions.NewCookieStore(secret)
 	cookieStore.Options.Domain = "*.u.isucon.local"
 	e.Use(session.Middleware(cookieStore))
