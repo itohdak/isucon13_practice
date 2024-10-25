@@ -491,7 +491,7 @@ func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel Li
 		return Livestream{}, err
 	}
 
-	var tags []Tag
+	tags := []Tag{}
 	if err := tx.SelectContext(
 		ctx,
 		&tags,
@@ -499,7 +499,7 @@ func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel Li
 			"	FROM livestream_tags, tags"+
 			"	WHERE livestream_id = ? AND livestream_tags.tag_id = tags.id",
 		livestreamModel.ID); err != nil {
-		return Livestream{}, err
+		return Livestream{}, fmt.Errorf("failed to get tags: %v", err)
 	}
 
 	livestream := Livestream{
