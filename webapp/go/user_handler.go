@@ -131,6 +131,8 @@ func getIconHandler(c echo.Context) error {
 			}
 		}
 		iconCache.Store(user.ID, image)
+		iconHashString := fmt.Sprintf("%x", sha256.Sum256(image))
+		iconHashCache.Store(user.Name, iconHashString)
 	}
 
 	return c.Blob(http.StatusOK, "image/jpeg", image)
@@ -437,9 +439,9 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 	}
 
 	var iconHashString string
-	cache, ok := iconCache.Load(userModel.ID)
+	hashCache, ok := iconHashCache.Load(userModel.Name)
 	if ok {
-		iconHashString = fmt.Sprintf("%x", sha256.Sum256(cache.([]byte)))
+		iconHashString = hashCache.(string)
 	} else {
 		var image []byte
 		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userModel.ID); err != nil {
@@ -453,8 +455,6 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		}
 		iconCache.Store(userModel.ID, image)
 		iconHashString = fmt.Sprintf("%x", sha256.Sum256(image))
-	}
-	if _, ok := iconHashCache.Load(userModel.Name); !ok {
 		iconHashCache.Store(userModel.Name, iconHashString)
 	}
 
