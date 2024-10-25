@@ -30,6 +30,7 @@ const (
 
 var fallbackImage = "../img/NoImage.jpg"
 var iconCache = map[int64][]byte{}
+var iconHashCache = map[string]string{}
 var themeCache = map[int64]Theme{}
 
 type UserModel struct {
@@ -91,6 +92,13 @@ func getIconHandler(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	username := c.Param("username")
+
+	hash := c.Request().Header.Get("If-None-Match")
+	if cache, ok := iconHashCache[username]; ok {
+		if hash == cache {
+			return c.Blob(http.StatusNotModified, "image/jpeg", []byte{})
+		}
+	}
 
 	tx, err := dbConn.BeginTxx(ctx, nil)
 	if err != nil {
@@ -442,6 +450,7 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		iconCache[userModel.ID] = image
 		iconHashString = fmt.Sprintf("%x", sha256.Sum256(image))
 	}
+	iconHashCache[userModel.Name] = iconHashString
 
 	user := User{
 		ID:          userModel.ID,
