@@ -450,7 +450,9 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		iconCache[userModel.ID] = image
 		iconHashString = fmt.Sprintf("%x", sha256.Sum256(image))
 	}
-	iconHashCache[userModel.Name] = iconHashString
+	if _, ok := iconHashCache[userModel.Name]; !ok {
+		iconHashCache[userModel.Name] = iconHashString
+	}
 
 	user := User{
 		ID:          userModel.ID,
