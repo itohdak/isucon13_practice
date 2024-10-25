@@ -176,15 +176,17 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get last inserted icon id: "+err.Error())
 	}
 
-	if err := tx.Commit(); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
-	}
-	iconCache.Store(userID, req.Image)
-	iconHashString := fmt.Sprintf("%x", sha256.Sum256(req.Image))
 	var username string
 	if err := tx.GetContext(ctx, &username, "SELECT name FROM users WHERE id = ?", userID); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to select user name: "+err.Error())
 	}
+
+	if err := tx.Commit(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to commit: "+err.Error())
+	}
+
+	iconCache.Store(userID, req.Image)
+	iconHashString := fmt.Sprintf("%x", sha256.Sum256(req.Image))
 	iconHashCache.Store(username, iconHashString)
 
 	return c.JSON(http.StatusCreated, &PostIconResponse{
