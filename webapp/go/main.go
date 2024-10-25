@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -18,9 +19,9 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/gorilla/sessions"
+	"github.com/kaz/pprotein/integration/standalone"
 	"github.com/labstack/echo-contrib/session"
 	echolog "github.com/labstack/gommon/log"
-	"github.com/kaz/pprotein/integration/standalone"
 )
 
 const (
@@ -98,7 +99,9 @@ func connectDB(logger echo.Logger) (*sqlx.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(10)
+	db.SetConnMaxLifetime(10 * time.Second)
+	db.SetMaxIdleConns(512)
+	db.SetMaxOpenConns(512)
 
 	if err := db.Ping(); err != nil {
 		return nil, err
@@ -114,10 +117,10 @@ func initializeHandler(c echo.Context) error {
 	}
 
 	go func() {
-            if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
-                log.Printf("failed to communicate with pprotein: %v", err)
-            }
-        }()
+		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
+			log.Printf("failed to communicate with pprotein: %v", err)
+		}
+	}()
 
 	c.Request().Header.Add("Content-Type", "application/json;charset=utf-8")
 	return c.JSON(http.StatusOK, InitializeResponse{
