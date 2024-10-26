@@ -198,7 +198,7 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
 
-	if resp, err := http.Post("http://s3.maca.jp:8888/api/icon/save", "application/json; charset=UTF-8", c.Request().Body); err != nil {
+	if resp, err := http.Post("http://s3.maca.jp:8080/api/icon/save", "application/json; charset=UTF-8", c.Request().Body); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to post save icon request to s3: "+err.Error())
 	} else {
 		defer resp.Body.Close()
