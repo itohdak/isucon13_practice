@@ -189,6 +189,7 @@ func postIconHandler(c echo.Context) error {
 	iconCache.Store(userID, req.Image)
 	iconHashString := fmt.Sprintf("%x", sha256.Sum256(req.Image))
 	iconHashCache.Store(username, iconHashString)
+	userCache.Delete(userID)
 
 	return c.JSON(http.StatusCreated, &PostIconResponse{
 		ID: iconID,
