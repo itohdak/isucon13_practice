@@ -35,6 +35,7 @@ var (
 	iconCache     = sync.Map{} // (int64, []byte)
 	iconHashCache = sync.Map{} // (string, string)
 	themeCache    = sync.Map{} // (int64, Theme)
+	userCache     = sync.Map{} // (int64, User)
 )
 
 type UserModel struct {
@@ -188,6 +189,7 @@ func postIconHandler(c echo.Context) error {
 	iconCache.Store(userID, req.Image)
 	iconHashString := fmt.Sprintf("%x", sha256.Sum256(req.Image))
 	iconHashCache.Store(username, iconHashString)
+	userCache.Delete(userID)
 
 	return c.JSON(http.StatusCreated, &PostIconResponse{
 		ID: iconID,
@@ -213,18 +215,12 @@ func getMeHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	userModel := UserModel{}
-	err = tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE id = ?", userID)
+	user, err := getUserById(ctx, tx, userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusNotFound, "not found user that has the userid in session")
 	}
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
-	}
-
-	user, err := fillUserResponse(ctx, tx, userModel)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fill user: "+err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to call getUserById: "+err.Error())
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -435,6 +431,31 @@ func verifyUserSession(c echo.Context) error {
 	return nil
 }
 
+func getUserById(ctx context.Context, tx *sqlx.Tx, userID int64) (User, error) {
+	if uCache, ok := userCache.Load(userID); ok {
+		return uCache.(User), nil
+	} else {
+		userModel := UserModel{}
+		err := tx.GetContext(ctx, &userModel, "SELECT * FROM users WHERE id = ?", userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return User{}, err
+		}
+		if err != nil {
+			return User{}, fmt.Errorf("failed to get user: %v", err)
+		}
+
+		user, err := fillUserResponse(ctx, tx, userModel)
+		if err != nil {
+			return User{}, fmt.Errorf("failed to fill user: %v", err)
+		}
+		return user, nil
+	}
+}
+
+/* func getUserByName(userName string) (User, error) {
+	return User{}, nil
+} */
+
 func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (User, error) {
 	themeModel := ThemeModel{}
 	tCache, ok := themeCache.Load(userModel.ID)
@@ -477,6 +498,7 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		},
 		IconHash: iconHashString,
 	}
+	userCache.Store(userModel.ID, user)
 
 	return user, nil
 }

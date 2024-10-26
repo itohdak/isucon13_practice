@@ -400,13 +400,9 @@ func moderateHandler(c echo.Context) error {
 }
 
 func fillLivecommentResponse(ctx context.Context, tx *sqlx.Tx, livecommentModel LivecommentModel) (Livecomment, error) {
-	commentOwnerModel := UserModel{}
-	if err := tx.GetContext(ctx, &commentOwnerModel, "SELECT * FROM users WHERE id = ?", livecommentModel.UserID); err != nil {
-		return Livecomment{}, err
-	}
-	commentOwner, err := fillUserResponse(ctx, tx, commentOwnerModel)
+	commentOwner, err := getUserById(ctx, tx, livecommentModel.UserID)
 	if err != nil {
-		return Livecomment{}, err
+		return Livecomment{}, fmt.Errorf("failed to call getUserById: %v", err)
 	}
 
 	livestreamModel := LivestreamModel{}
@@ -431,13 +427,9 @@ func fillLivecommentResponse(ctx context.Context, tx *sqlx.Tx, livecommentModel 
 }
 
 func fillLivecommentReportResponse(ctx context.Context, tx *sqlx.Tx, reportModel LivecommentReportModel) (LivecommentReport, error) {
-	reporterModel := UserModel{}
-	if err := tx.GetContext(ctx, &reporterModel, "SELECT * FROM users WHERE id = ?", reportModel.UserID); err != nil {
-		return LivecommentReport{}, err
-	}
-	reporter, err := fillUserResponse(ctx, tx, reporterModel)
+	reporter, err := getUserById(ctx, tx, reportModel.UserID)
 	if err != nil {
-		return LivecommentReport{}, err
+		return LivecommentReport{}, fmt.Errorf("failed to call getUserById: %v", err)
 	}
 
 	livecommentModel := LivecommentModel{}
