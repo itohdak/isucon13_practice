@@ -162,6 +162,11 @@ func postIconHandler(c echo.Context) error {
 	}
 	defer tx.Rollback()
 
+	var username string
+	if err := tx.GetContext(ctx, &username, "SELECT name FROM users WHERE id = ?", userID); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to select user name: "+err.Error())
+	}
+
 	if _, err := tx.ExecContext(ctx, "DELETE FROM icons WHERE user_id = ?", userID); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
@@ -174,11 +179,6 @@ func postIconHandler(c echo.Context) error {
 	iconID, err := rs.LastInsertId()
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get last inserted icon id: "+err.Error())
-	}
-
-	var username string
-	if err := tx.GetContext(ctx, &username, "SELECT name FROM users WHERE id = ?", userID); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to select user name: "+err.Error())
 	}
 
 	if err := tx.Commit(); err != nil {
