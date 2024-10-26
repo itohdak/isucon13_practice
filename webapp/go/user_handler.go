@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -139,6 +140,21 @@ func getIconHandler(c echo.Context) error {
 	return c.Blob(http.StatusOK, "image/jpeg", image)
 }
 
+func saveIcon(image []byte) error {
+	iconHash := sha256.Sum256(image)
+	hexHash := hex.EncodeToString(iconHash[:])
+	iconFilePath := fmt.Sprintf("/home/isucon/share/%s.jpg", hexHash)
+	f, err := os.OpenFile(iconFilePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0777)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %v", iconFilePath, err)
+	}
+	defer f.Close()
+	if _, err := f.Write(image); err != nil {
+		return fmt.Errorf("failed to write file %s: %v", iconFilePath, err)
+	}
+	return nil
+}
+
 func postIconHandler(c echo.Context) error {
 	ctx := c.Request().Context()
 
@@ -167,6 +183,9 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
 
+	if err = saveIcon(req.Image); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save user icon: "+err.Error())
+	}
 	rs, err := tx.ExecContext(ctx, "INSERT INTO icons (user_id, image) VALUES (?, ?)", userID, req.Image)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
