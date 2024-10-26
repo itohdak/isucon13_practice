@@ -57,3 +57,8 @@ sudo systemctl restart ${APP_NAME}-go
 # log permission
 sudo chmod -R 777 /var/log/nginx
 sudo chmod -R 777 /var/log/mysql
+
+sleep 3
+sudo systemctl restart rsyslog
+sudo systemctl restart pdns
+sudo systemctl restart dnsdist
