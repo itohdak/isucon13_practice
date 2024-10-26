@@ -187,6 +187,9 @@ func main() {
 	e.GET("/api/user/:username/icon", getIconHandler)
 	e.POST("/api/icon", postIconHandler)
 
+	// icon画像をローカルに保存させるAPI
+	e.POST("/api/icon/save", postIconSaveHandler)
+
 	// stats
 	// ライブ配信統計情報
 	e.GET("/api/livestream/:livestream_id/statistics", getLivestreamStatisticsHandler)
