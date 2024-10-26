@@ -184,7 +184,8 @@ func postIconHandler(c echo.Context) error {
 	userID := sess.Values[defaultUserIDKey].(int64)
 
 	var req *PostIconRequest
-	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
+	requestBody := c.Request().Body
+	if err := json.NewDecoder(requestBody).Decode(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
 	}
 
@@ -198,7 +199,7 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
 
-	if resp, err := http.Post("http://s3.maca.jp:8080/api/icon/save", "application/json; charset=UTF-8", c.Request().Body); err != nil {
+	if resp, err := http.Post("http://s3.maca.jp:8080/api/icon/save", "application/json; charset=UTF-8", requestBody); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to post save icon request to s3: "+err.Error())
 	} else {
 		defer resp.Body.Close()
