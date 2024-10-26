@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -132,11 +133,16 @@ func getIconHandler(c echo.Context) error {
 	return c.NoContent(http.StatusFound)
 }
 
-func saveIcon(image []byte) (string, error) {
+func getFilePathToSaveIcon(image []byte) (string, error) {
 	iconHash := sha256.Sum256(image)
 	hexHash := hex.EncodeToString(iconHash[:])
 	iconFileName := fmt.Sprintf("%s.jpg", hexHash)
 	iconFilePath := "/home/isucon/webapp/img/" + iconFileName
+	return iconFilePath, nil
+}
+
+func saveIcon(image []byte) (string, error) {
+	iconFilePath, _ := getFilePathToSaveIcon(image)
 	if _, err := os.Stat(iconFilePath); err == nil {
 		return iconFilePath, nil
 	}
@@ -149,6 +155,19 @@ func saveIcon(image []byte) (string, error) {
 		return "", fmt.Errorf("failed to write file %s: %v", iconFilePath, err)
 	}
 	return iconFilePath, nil
+}
+
+func postIconSaveHandler(c echo.Context) error {
+	var req *PostIconRequest
+	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
+	}
+
+	_, err := saveIcon(req.Image)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save user icon: "+err.Error())
+	}
+	return c.NoContent(http.StatusCreated)
 }
 
 func postIconHandler(c echo.Context) error {
@@ -179,9 +198,18 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
 
-	iconFilePath, err := saveIcon(req.Image)
+	if resp, err := http.Post("http://s3.maca.jp:8888/api/icon/save", "application/json; charset=UTF-8", c.Request().Body); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to post save icon request to s3: "+err.Error())
+	} else {
+		defer resp.Body.Close()
+		_, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to read response of save icon request: "+err.Error())
+		}
+	}
+	iconFilePath, err := getFilePathToSaveIcon(req.Image)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save user icon: "+err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get icon path: "+err.Error())
 	}
 	rs, err := tx.ExecContext(ctx, "INSERT INTO icons (user_id, image) VALUES (?, ?)", userID, req.Image)
 	if err != nil {
