@@ -144,6 +144,21 @@ func getFilePathToSaveIcon(image []byte) (string, error) {
 
 func saveIcon(image []byte) (string, error) {
 	iconFilePath, _ := getFilePathToSaveIcon(image)
+	jsonBody, _ := json.Marshal(PostIconRequest{Image: image})
+	if resp, err := http.Post("http://s3.maca.jp:8080/api/icon/save", "application/json; charset=UTF-8", bytes.NewBuffer(jsonBody)); err != nil {
+		return "", err
+	} else {
+		defer resp.Body.Close()
+		_, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", err
+		}
+	}
+	return iconFilePath, nil
+}
+
+func saveIconLocal(image []byte) (string, error) {
+	iconFilePath, _ := getFilePathToSaveIcon(image)
 	if _, err := os.Stat(iconFilePath); err == nil {
 		return iconFilePath, nil
 	}
@@ -163,8 +178,7 @@ func postIconSaveHandler(c echo.Context) error {
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
 	}
-
-	_, err := saveIcon(req.Image)
+	_, err := saveIconLocal(req.Image)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save user icon: "+err.Error())
 	}
@@ -185,8 +199,7 @@ func postIconHandler(c echo.Context) error {
 	userID := sess.Values[defaultUserIDKey].(int64)
 
 	var req *PostIconRequest
-	requestBody := c.Request().Body
-	if err := json.NewDecoder(requestBody).Decode(&req); err != nil {
+	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to decode the request body as json")
 	}
 
@@ -200,16 +213,7 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
 
-	if resp, err := http.Post("http://s3.maca.jp:8080/api/icon/save", "application/json; charset=UTF-8", requestBody); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to post save icon request to s3: "+err.Error())
-	} else {
-		defer resp.Body.Close()
-		_, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to read response of save icon request: "+err.Error())
-		}
-	}
-	iconFilePath, err := getFilePathToSaveIcon(req.Image)
+	iconFilePath, err := saveIcon(req.Image)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get icon path: "+err.Error())
 	}
