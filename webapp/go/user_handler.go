@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,11 +30,15 @@ const (
 	bcryptDefaultCost        = bcrypt.MinCost
 )
 
-var fallbackImage = "../img/NoImage.jpg"
+var (
+	fallbackImage     = "../img/NoImage.jpg"
+	fallbackImagePath = "/home/isucon/webapp/img/NoImage.jpg"
+)
 
 var (
 	iconCache     = sync.Map{} // (int64, []byte)
 	iconHashCache = sync.Map{} // (string, string)
+	iconFileCache = sync.Map{} // (int64, string)
 	themeCache    = sync.Map{} // (int64, Theme)
 	userCache     = sync.Map{} // (int64, User)
 )
@@ -119,24 +124,31 @@ func getIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
 
-	var image []byte
-	cache, ok := iconCache.Load(user.ID)
-	if ok {
-		image = cache.([]byte)
-	} else {
-		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", user.ID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return c.File(fallbackImage)
-			} else {
-				return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user icon: "+err.Error())
-			}
-		}
-		iconCache.Store(user.ID, image)
-		iconHashString := fmt.Sprintf("%x", sha256.Sum256(image))
-		iconHashCache.Store(user.Name, iconHashString)
+	iconFileName, err := getIconFilePathByUserId(ctx, tx, user.ID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to call getIconFilePathByUserId: "+err.Error())
 	}
+	c.Response().Header().Set("X-Accel-Redirect", iconFileName)
+	return c.NoContent(http.StatusFound)
+}
 
-	return c.Blob(http.StatusOK, "image/jpeg", image)
+func saveIcon(image []byte) (string, error) {
+	iconHash := sha256.Sum256(image)
+	hexHash := hex.EncodeToString(iconHash[:])
+	iconFileName := fmt.Sprintf("%s.jpg", hexHash)
+	iconFilePath := "/home/isucon/webapp/img/" + iconFileName
+	if _, err := os.Stat(iconFilePath); err == nil {
+		return iconFilePath, nil
+	}
+	f, err := os.OpenFile(iconFilePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0777)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file %s: %v", iconFilePath, err)
+	}
+	defer f.Close()
+	if _, err := f.Write(image); err != nil {
+		return "", fmt.Errorf("failed to write file %s: %v", iconFilePath, err)
+	}
+	return iconFilePath, nil
 }
 
 func postIconHandler(c echo.Context) error {
@@ -167,6 +179,10 @@ func postIconHandler(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete old user icon: "+err.Error())
 	}
 
+	iconFilePath, err := saveIcon(req.Image)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save user icon: "+err.Error())
+	}
 	rs, err := tx.ExecContext(ctx, "INSERT INTO icons (user_id, image) VALUES (?, ?)", userID, req.Image)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to insert new user icon: "+err.Error())
@@ -189,6 +205,7 @@ func postIconHandler(c echo.Context) error {
 	iconCache.Store(userID, req.Image)
 	iconHashString := fmt.Sprintf("%x", sha256.Sum256(req.Image))
 	iconHashCache.Store(username, iconHashString)
+	iconFileCache.Store(userID, iconFilePath)
 	userCache.Delete(userID)
 
 	return c.JSON(http.StatusCreated, &PostIconResponse{
@@ -429,6 +446,35 @@ func verifyUserSession(c echo.Context) error {
 	}
 
 	return nil
+}
+
+func getIconFilePathByUserId(ctx context.Context, tx *sqlx.Tx, userID int64) (string, error) {
+	if iconFilePath, ok := iconFileCache.Load(userID); ok {
+		// iconのファイル名がキャッシュにあれば、それを返す
+		return iconFilePath.(string), nil
+	}
+	var image []byte
+	if cache, ok := iconCache.Load(userID); ok {
+		// iconの画像がキャッシュにあれば、取得する
+		image = cache.([]byte)
+	} else {
+		// iconの画像もなければ、DBに取りに行く
+		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fallbackImagePath, nil
+			} else {
+				return "", fmt.Errorf("failed to get user icon: %v", err)
+			}
+		}
+		iconCache.Store(userID, image)
+	}
+	iconFilePath, err := saveIcon(image)
+	iconFileCache.Store(userID, iconFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to save icon: %v", err)
+	} else {
+		return iconFilePath, nil
+	}
 }
 
 func getUserById(ctx context.Context, tx *sqlx.Tx, userID int64) (User, error) {
