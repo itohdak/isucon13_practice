@@ -40,6 +40,8 @@ else
   /home/isucon/local/golang/bin/go build -o ${APP_NAME}
 fi
 
+sudo rm /etc/nginx/sites-enabled/isupipe.conf
+sudo ln -s /etc/nginx/sites-available/isupipe.conf /etc/nginx/sites-enabled/isupipe.conf
 
 # ミドルウェア・Appの再起動
 sudo systemctl restart mysql
