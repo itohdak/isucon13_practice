@@ -29,6 +29,21 @@ for file in `\find etc -type f`; do
   sudo cp -f $file /$file
 done
 
+# lib以下のファイルについてすべてコピーする
+for file in `\find lib -type f`; do
+  # .gitkeepはコピーしない
+  if [ $file = "lib/.gitkeep" ]; then
+    continue
+  fi
+
+  # 同名のファイルが ../${HOSTNAME}/lib/ にあればそちらを優先してコピーする
+  if [ -e ../${HOSTNAME}/$file ]; then
+    sudo cp -f ../${HOSTNAME}/$file /$file
+    continue
+  fi
+  sudo cp -f $file /$file
+done
+
 # アプリケーションのビルド
 APP_NAME=isupipe
 cd /home/isucon/webapp/go/
