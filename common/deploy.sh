@@ -45,9 +45,6 @@ fi
 sudo systemctl restart mysql
 sudo systemctl restart nginx
 sudo systemctl restart ${APP_NAME}-go
-sudo systemctl restart rsyslog
-sudo systemctl restart pdns
-sudo systemctl restart dnsdist
 
 # slow query logの有効化
 # QUERY="
@@ -60,3 +57,8 @@ sudo systemctl restart dnsdist
 # log permission
 sudo chmod -R 777 /var/log/nginx
 sudo chmod -R 777 /var/log/mysql
+
+sleep 3
+sudo systemctl restart rsyslog
+sudo systemctl restart pdns
+sudo systemctl restart dnsdist
