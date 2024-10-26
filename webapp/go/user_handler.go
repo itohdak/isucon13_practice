@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -497,7 +498,11 @@ func getIconFilePathByUserId(ctx context.Context, tx *sqlx.Tx, userID int64) (st
 		}
 		iconCache.Store(userID, image)
 	}
-	iconFilePath, err := saveIcon(image)
+	jsonBody, _ := json.Marshal(PostIconRequest{Image: image})
+	if _, err := http.Post("http://s3.maca.jp:8080/api/icon/save", "application/json; charset=UTF-8", bytes.NewBuffer(jsonBody)); err != nil {
+		return "", err
+	}
+	iconFilePath, err := getFilePathToSaveIcon(image)
 	iconFileCache.Store(userID, iconFilePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to save icon: %v", err)
