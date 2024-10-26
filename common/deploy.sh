@@ -45,6 +45,7 @@ fi
 sudo systemctl restart mysql
 sudo systemctl restart nginx
 sudo systemctl restart ${APP_NAME}-go
+sudo systemctl restart rsyslog
 sudo systemctl restart pdns
 sudo systemctl restart dnsdist
 
